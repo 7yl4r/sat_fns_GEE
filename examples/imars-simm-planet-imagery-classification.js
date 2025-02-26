@@ -12,62 +12,72 @@ Authors:
   TBD
   
 Quick tips:
-Cntl + Space after ( for help with any command
-Cntl + f to search
-Cntl + h to replace
-
+Ctrl + Space after ( for help with any command
+Ctrl + f to search
+Ctrl + h to replace
 */
 
-//////START///////
-ee.String('Part A: Define your area of interest & set up the map')
-
-//  Define your area of interest (AOI)
-//Import shapefile from to Assests: TenThousandIslands_footprint
-
+//=====================================================================================================================//
+// === setup
+//=====================================================================================================================//
+// === Define area of interest (AOI)
+// Using imported shapefile from Assests: TenThousandIslands_footprint
+// Then add it to the map
 Map.addLayer(AOI, {},'AOI', false, 0.7);
 
-//  Select the basemap you would like to use
-//  Basemap options: "ROADMAP", "SATELLITE", "HYBRID" or "TERRAIN"
+// === Select the basemap you would like to use
+// Basemap options: "ROADMAP", "SATELLITE", "HYBRID" or "TERRAIN"
 Map.setOptions('Satellite');
 
-//=====================================================================================================================//
-ee.String('Part B: Prepare your input imagery - PlanteScope')
+// === Prepare input imagery
+// PlanetScope imported from assets above.
 
-//We may need to create an image composite of all the sections: stich the sections together before running the classification? 
-//NO. We will work the images individualyy and aafter create the composite
+// === Composite
+// Rather than creating an image composite of all the sections,
+// (ie stiching the sections together before running the classification) 
+// we work the images individualy and after create the composite.
 
-// Import necessary packages 
+// === Import IMaRS' Regional and Satellite-specific helper functions
 var ROI = require("users/tylarmurray/rois:TTI");
 var sat_fns = require('users/tylarmurray/sat_fns:planet_fns');
 
-// Load and Rescale the Image
+// Define True Color Visualization Parameters
+var visParams = {
+  bands: ['b6', 'b3', 'b2'],  // RGB bands
+  min: 0,
+  max: 3000,
+  gamma: 1.4
+};
 
-//Get metadata and number of images in the collection
+//=====================================================================================================================//
+// === Load and PreProcess the Image
+//=====================================================================================================================//
+// === Get metadata and number of images in the collection
 //var collection = ee.ImageCollection('projects/imars-simm/assets/planet_tti')
 //print(collection)
 
-//List all image IDs in the collection
+// === List all image IDs in the collection
 //var imageIds = collection.aggregate_array('system:index');
 //print('Image IDs:', imageIds);
 
 /////IMAGES FOR TTI 2023////
-
-
-//var TTI= ee.Image ('projects/imars-simm/assets/planet_tti/20231023_155324_72_2479') // south; good and clean image
+//var TTI = ee.Image ('projects/imars-simm/assets/planet_tti/20231023_155324_72_2479') // south; good and clean image
 //var TTI = ee.Image('projects/imars-simm/assets/planet_tti/20230923_155247_60_248e') //all AOI; good
 //var TTI = ee.Image('projects/imars-simm/assets/planet_tti/20231004_155144_73_247f') //takes almost all AOI; a lot of clouds; somehow useful 
 //var TTI = ee.Image('projects/imars-simm/assets/planet_tti/20231101_155514_93_247a') //north; good
 //var TTI = ee.Image('projects/imars-simm/assets/planet_tti/20230923_155245_46_248e') //north; good
 var TTI = ee.Image('projects/imars-simm/assets/planet_tti/20230923_155103_51_2490') //north; good
 
-//Rescale the image: we need to divide each band by 10000 to convert SR values between 0 and 
-//var TTIdivide = TTI.divide(10000) /// no need to do this now as the rescale calculation is inside the sat_fns
-
+// === Rescale the image
+// divide each band by 10000 to convert SR values between 0 and 
 var TTI = sat_fns.rescale(TTI);
+// alternative:
+// var TTIdivide = TTI.divide(10000)
 
 print('TTI Metadata:', TTI);
 
-//ADD MASKS: cloud mask, water/land mask, sun-glint, Depth Invariant Index
+// === ADD MASKS
+// cloud mask, water/land mask, sun-glint, Depth Invariant Index
 
 // Add Cloud Mask
 var img = sat_fns.cloudMask(TTI, ROI);
@@ -75,10 +85,9 @@ var img = sat_fns.cloudMask(TTI, ROI);
 // Print to check if masking was successful
 print('Masked Image:', img);
 
-//Visualize the rescaled image
+// Visualize the rescaled image
 Map.centerObject(TTI, 10);
 Map.addLayer(img.clip (AOI), {bands: ['b6', 'b3', 'b2'], min: 0, max: 0.14}, 'Rescaled clipped Image');
-
 
 // Water Mask, calculate NDWI (using Green 'b3 or b4' and NIR 'b8') for water detection-----------------------------------
 
@@ -93,7 +102,6 @@ var imageWithNDWI = img_clip.addBands(ndwi_clipped);
 // Print the result to check
 print(imageWithNDWI);
 
-
 // Threshold NDWI to identify water (e.g., NDWI > 0)
 var waterMaskNDWI = ndwi_clipped.gt(-0.1);// before 0
 // Apply the water mask to the image
@@ -101,22 +109,11 @@ var waterMaskedImageNDWI = imageWithNDWI.updateMask(waterMaskNDWI);
 // Print masked image for verification
 print('Masked Image with NDWI:', waterMaskedImageNDWI); // 
 
-// Define visualization parameters
-var visParams = {
- bands: ['b6', 'b3', 'b2'],  // RGB bands
- min: 0,
- max: 3000,
-gamma: 1.4
-};
-
-
-
 // Add to the map
 //Map.addLayer(ndwi, {min: -1, max: 1, palette: ['brown', 'blue']}, 'NDWI');
 //Map.addLayer(waterMaskedImageNDWI, visParams, 'NDWI Water Masked Image');
 
-// Apply sun-glint correction --------------------------------------------------------------------------------------------- 
-
+// === Apply sun-glint correction
 // Load your image with NIR and visible bands
 var image = waterMaskedImageNDWI; //it has the cloud mask, water mask and is clipped to the AOI
 
@@ -180,8 +177,7 @@ Map.centerObject(sunglintRegion, 10);  // Center on the sunglint region
 var img_masked = deglintedImage; 
 
 
-// Apply Depth Invariant Index - DII --------------------------------------------------------------------------------------
-
+// === Apply Depth Invariant Index - DII
 // Define bands of interest for the DII:
 var bands = ['b2','b3'] //Blue and Green; or b4 GREEN II for PlanetImage
 
@@ -254,12 +250,11 @@ var blue = finalImage.select('b1');
 //Map.addLayer(svi, {min: 0, max: 3, palette: ['blue', 'white', 'green']}, 'SVI');
 //Map.addLayer(avi, {min: -1, max: 1, palette: ['blue', 'white', 'green']}, 'AVI'); //values will range between -1 and 1:Positive values (~0.1 to 1): Likely vegetation.Values near 0: Possibly water or sparse vegetation. Negative values: Likely water or other non-vegetative surfaces.
 
-
 //The indices values can get better after applying the DII and playing with better sand_poly areas.
 
 //=====================================================================================================================//
-ee.String('Part C: Prepare training and testing data, and run a RandomForests classification algorithm or an SVM classification algorithm')
-
+// === Prepare training and testing data 
+//=====================================================================================================================//
 //Add input for training of the SVM classification algorithm
 //blue, green and red bands, the coastal aerosol - if available and the DII band (The output of the blue and green band ratios). The use of 
 //the spectral bands along with the DII is intended to increase multidimensionality and classification accuracy of SVM, 
@@ -284,9 +279,7 @@ ee.String('Part C: Prepare training and testing data, and run a RandomForests cl
 ///oyster=> oyster beds or ouster patches alone: 3
 ///water=> water canals: 4
 
-
 //  Merge the featureCollections together
-
 var classNames = softbottom.merge(gravel).merge(sav).merge(oyster).merge(water); //IS THERE AN ORDER FOR MERGING?
 
 //  Define the bands you want to include in the model
@@ -296,28 +289,26 @@ var bands = ['b1','b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8','b2b3','Blue_deglinte
 var bandsimage = finalImage.select(bands).clip(AOI) 
 
 // Data verification check: to make sure my classes and bands are correct
-
-
 print('Merged Training Data:', classNames) // verify that the merged classNames variable contains features with valid geometries and attributes. Ensure they all have a class property (0, 1, 2)
 //Map.addLayer(classNames, {}, 'Training Data'); //to visualize your sample locations points
 print('Available bands:', finalImage.bandNames())
-
 
 //  Create cover samples and band values at the sample locations
 var samples = bandsimage.sampleRegions({
   collection: classNames, // Extract sample locations from the classes polygons
   properties: ['cover'], // Label to retain from each sample
-  scale: 3})   // Make each sample the same size as Planet pixel
-  .randomColumn('random') // Create a column with random numbers //
+  scale: 3
+})   // Make each sample the same size as Planet pixel
+.randomColumn('random'); // Create a column with random numbers //
   
-  // Parse sample classes
+// Parse sample classes
 var softbottomClass = samples.filter(ee.Filter.eq('cover',0)) //mud + sand + shell
 var gravelClass = samples.filter(ee.Filter.eq('cover',1)) //Hard Bottom + macroalgae + shell + oyster
 var savClass = samples.filter(ee.Filter.eq('cover',2)) //macroalgae + sand
 var oysterClass = samples.filter(ee.Filter.eq('cover',3)) //oyster beds alone
 var waterClass = samples.filter(ee.Filter.eq('cover',4)) //water canals
 
-//// Generate random numbers from 0 to 1 for each sampled class.
+// Generate random numbers from 0 to 1 for each sampled class.
 var softbottomRandom = softbottomClass.randomColumn("random");
 var gravelRandom = gravelClass.randomColumn("random");
 var savRandom = savClass.randomColumn("random");
@@ -332,9 +323,9 @@ print('Survey Data:',groundData)
 var trainingPoints = groundData.filter(ee.Filter.lt("random",0.7));
 var validationPoints = groundData.filter(ee.Filter.gte("random", 0.3));
 
-
-// Define and train the SVM classifier:
-
+//=====================================================================================================================//
+// === Define and train the classifier 
+//=====================================================================================================================//
 var SVM = ee.Classifier.libsvm({
   kernelType: 'RBF',
   gamma: 90, 
@@ -346,11 +337,12 @@ var trainSVM = SVM.train({
   inputProperties: bands
 });
 
-// Classify the image using the trained classifier
+//=====================================================================================================================//
+// === Classify the image using the trained classifier
+//=====================================================================================================================//
 var classifiedSVM = finalImage.classify(trainSVM);
 
-// Display Classification Map and Accuracy Assessment
-
+// === Display Classification Map and Accuracy Assessment
 // Define a palette for the distinct classes 
 // Recommended to use https://colorbrewer2.org/ to select color palettes//
 var spectral =['#fbb4ae','#377eb8','#4daf4a','#984ea3','#ff7f00']
@@ -370,7 +362,7 @@ var classPalette = {min:0, max:4, palette:spectral}
 //deepwater: #ff7f00 orange
 
 
-// Display Classified map
+// === Display Classified map
 Map.addLayer(classifiedSVM, classPalette, 'SVM classification',false);
 
 //To show single classes (SVM):
@@ -383,7 +375,7 @@ Map.addLayer(classifiedSVM.mask(classifiedSVMsoftbottom), {palette:['#dfc27d']},
 var classifiedSVMoyster = classifiedSVM.eq(3)
 Map.addLayer(classifiedSVM.mask(classifiedSVMoyster), {palette:['#7b3294']}, 'SVM oyster', false);
 
-// Calculate accuracy using validation data
+// === Calculate accuracy using validation data
 // Classify the image using the trained classifier
 var validationSVM = validationPoints.classify(trainSVM);
 
