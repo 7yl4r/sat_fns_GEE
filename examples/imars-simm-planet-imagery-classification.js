@@ -1,5 +1,3 @@
-///////To get a set of image collection features (imageID)///////// 
-//=====================================================================================================================//
 /*                                        
 
 Mapping seagrass in Ten Thousand Island - Florida USA
@@ -86,148 +84,52 @@ var img = sat_fns.cloudMask(TTI, ROI);
 print('Masked Image:', img);
 
 // Visualize the rescaled image
-Map.centerObject(TTI, 10);
-Map.addLayer(img.clip (AOI), {bands: ['b6', 'b3', 'b2'], min: 0, max: 0.14}, 'Rescaled clipped Image');
+Map.centerObject(img, 10);
+Map.addLayer(
+  img.clip (AOI), 
+  {
+    bands: ['b6', 'b3', 'b2'], 
+    min: 0, 
+    max: 0.14
+    
+  }, 
+  'Rescaled clipped Image'
+);
 
-// Water Mask, calculate NDWI (using Green 'b3 or b4' and NIR 'b8') for water detection-----------------------------------
-
-// Compute NDWI
-var ndwi = img.normalizedDifference(['b4', 'b8']).rename('NDWI'); 
-// Clip the origina image
-var img_clip = img.clip(AOI)
-// Clip NDWI
-var ndwi_clipped = ndwi.clip(AOI)
-// Add the NDWI band to the original image
-var imageWithNDWI = img_clip.addBands(ndwi_clipped);
-// Print the result to check
-print(imageWithNDWI);
-
-// Threshold NDWI to identify water (e.g., NDWI > 0)
-var waterMaskNDWI = ndwi_clipped.gt(-0.1);// before 0
-// Apply the water mask to the image
-var waterMaskedImageNDWI = imageWithNDWI.updateMask(waterMaskNDWI);
+// === Water Mask, calculate NDWI (using Green 'b3 or b4' and NIR 'b8') for water detection
+var img = sat_fns.landMaskNDWI(img);
 // Print masked image for verification
-print('Masked Image with NDWI:', waterMaskedImageNDWI); // 
+print('Masked Image with NDWI:', img);
 
 // Add to the map
 //Map.addLayer(ndwi, {min: -1, max: 1, palette: ['brown', 'blue']}, 'NDWI');
-//Map.addLayer(waterMaskedImageNDWI, visParams, 'NDWI Water Masked Image');
+Map.addLayer(img, visParams, 'Water Masked Image');
 
 // === Apply sun-glint correction
-// Load your image with NIR and visible bands
-var image = waterMaskedImageNDWI; //it has the cloud mask, water mask and is clipped to the AOI
+img = sat_fns.deGlint(img, sunglint);
 
-// Select the bands
-var NIR = image.select('b8');  // Adjust 'NIR' to the actual band name
-var blue = image.select('b2');  // Adjust 'B2' to the actual band name b1 Coastal Blue for Planet
-var green = image.select('b3'); // Adjust 'B3' to the actual band name b4 Green II for Planet
-var red = image.select('b6');   // Adjust 'B4' to the actual band name
+print('deglintedImage',img)
+Map.addLayer(
+  img, 
+  {
+    bands: [
+      'Red_deglinted', 
+      'Green_deglinted', 
+      'Blue_deglinted'
+    ], 
+    min: 0, 
+    max: 0.2, 
+    gamma: 2
+  }, 
+  'Deglinted Image'
+);
 
-// Use the pre-defined sunglint geometry for sampling 
-var sunglintRegion = sunglint;
-
-// Perform linear regression between NIR and each visible band using reduceRegion
-var blueRegression = image.select(['b8', 'b2'])
-    .reduceRegion({
-    reducer: ee.Reducer.linearFit(),
-    geometry: sunglintRegion,
-    scale: 3,
-    maxPixels: 1e9
- });
-
-var greenRegression = image.select(['b8', 'b3'])
-    .reduceRegion({
-    reducer: ee.Reducer.linearFit(),
-    geometry: sunglintRegion,
-    scale: 3,
-    maxPixels: 1e9
-});
-
-var redRegression = image.select(['b8', 'b6'])
-    .reduceRegion({
-    reducer: ee.Reducer.linearFit(),
-    geometry: sunglintRegion,
-    scale: 3,
-    maxPixels: 1e9
-});
-
-// Get the slope and intercept for each band
-var slopeBlue = ee.Number(blueRegression.get('scale'));
-var interceptBlue = ee.Number(blueRegression.get('offset'));
-
-var slopeGreen = ee.Number(greenRegression.get('scale'));
-var interceptGreen = ee.Number(greenRegression.get('offset'));
-
-var slopeRed = ee.Number(redRegression.get('scale'));
-var interceptRed = ee.Number(redRegression.get('offset'));
-
-// Apply the deglinting correction // HOW TO UNDERSTAND THIS GRAPHICALLY?
-var correctedBlue = blue.subtract(NIR.multiply(slopeBlue)).subtract(interceptBlue);
-var correctedGreen = green.subtract(NIR.multiply(slopeGreen)).subtract(interceptGreen);
-var correctedRed = red.subtract(NIR.multiply(slopeRed)).subtract(interceptRed);
-
-// Combine the corrected bands into a new image
-var deglintedImage = image.addBands(correctedBlue.rename('Blue_deglinted'))
-                          .addBands(correctedGreen.rename('Green_deglinted'))
-                          .addBands(correctedRed.rename('Red_deglinted'));
-print('deglintedImage',deglintedImage)
-Map.addLayer(deglintedImage, {bands: ['Red_deglinted', 'Green_deglinted', 'Blue_deglinted'], min: 0, max: 0.2, gamma: 2}, 'Deglinted Image');
-
-Map.centerObject(sunglintRegion, 10);  // Center on the sunglint region
-var img_masked = deglintedImage; 
+Map.centerObject(sunglint, 10);  // Center on the sunglint region
+var img_masked = img; 
 
 
 // === Apply Depth Invariant Index - DII
-// Define bands of interest for the DII:
-var bands = ['b2','b3'] //Blue and Green; or b4 GREEN II for PlanetImage
-
-// Get standard deviation values:
-var imgSTD = img_masked.select(bands).reduceRegion({ //function computes statistics (e.g., mean, standard deviation)
-reducer:ee.Reducer.stdDev(), //This applies the standard deviation reducer to calculate the spread of pixel values for the selected bands within the region.
-geometry:sand_poly, //polygons of sand areas at different depths
-  scale: 3,
-  maxPixels:1e13}).toArray();
-  
-// Calculate the Variance:
-var imgVAR = imgSTD.multiply(imgSTD).toList();
-
-// Get mean values:
-var imgMEAN = img_masked.reduceRegion({
-  reducer:ee.Reducer.mean(),
-  geometry:sand_poly,
-  scale: 3,
-  maxPixels:1e13}).toArray();
-  
-// Calculate the coefficient of variation:
-var CV = imgSTD.divide(imgMEAN);
-
-// Covariance Matrix for band pairs
-var imgCOV = img_masked.toArray().reduceRegion({
-  reducer: ee.Reducer.covariance(),
-  geometry: sand_poly,
-  scale: 3});
-imgCOV = ee.Array(imgCOV.get('array'));
-
-//Get covariances for band ratios
-var imgCOVB23 =  ee.Number(imgCOV.get([0,1])); // Ratio b2/b3
-
-// Attenuation Coefficient (a) of band pairs
-var var2 = ee.Number(imgVAR.get(0)); // Variance of b2
-var var3 = ee.Number(imgVAR.get(1)); // Variance of b3
-var a2_3 = (var2.subtract(var3)).divide(imgCOVB23.multiply(2)); // b2b3
-
-// Ratio of Attenuation Coefficient
-var k2_3 = a2_3.add(((a2_3.multiply(a2_3).add(1))).pow(0.5)); // B2B3
-
-// Depth invariance index DII
-var DII_2_3 = img_masked.select('b2').log().subtract(img_masked.select('b3').log().multiply(k2_3)); // B2B3
-
-// Make depth invariance images
-var DI_image = ee.Image();
-var DI_image = DI_image.addBands(DII_2_3.select(['b2'],['b2b3'])); // B2B3
-
-// Add the b2/b3 as a band to our image:
-var finalImage = img_masked.addBands(DI_image);// NEED TO ADD THE BAND TO THE IMAGE?
+img = sat_fns.addDII(img);
 
 // Compute vegetation indices for each image
 
