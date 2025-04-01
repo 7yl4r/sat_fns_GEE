@@ -7,11 +7,11 @@ Google Earth Engine Module for Unified Satellite Mapping
 // sat_fns GEE scripts are modules meant to be imported into other scripts.
 //
 // Examples of how to use it from another script:
-var s2_fns = require(  // import the module
+var sat_fns = require(  // import the module
   'users/tylarmurray/sat_fns:s2_fns'
 );
-image = s2_fns.landMask(image)
+image = sat_fns.landMask(image)
 
 // or, for an ee.ImageCollection:
-imageCollection = imageCollection.map(s2_fns.landMask);
+imageCollection = imageCollection.map(sat_fns.landMask);
 ``
