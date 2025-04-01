@@ -14,4 +14,9 @@ image = sat_fns.landMask(image)
 
 // or, for an ee.ImageCollection:
 imageCollection = imageCollection.map(sat_fns.landMask);
-``
+```
+
+## citation
+TODO: publish somewhere & get a doi
+
+T. Murray, "Google Earth Engine Module for Unified Satellite Mapping," on GitHub, 2025. url: https://github.com/7yl4r/sat_fns_GEE. 
